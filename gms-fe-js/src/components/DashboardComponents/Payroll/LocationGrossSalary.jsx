@@ -87,6 +87,7 @@ const LocationGrossSalaryForm = () => {
             if (locationId) {
                 try {
                     const res = await userRequest.get(`/location/assigned-guard/${locationId}`);
+                    console.debug('GET /location/assigned-guard response:', res.data);
                     setGuards(res.data.data || []);
                 } catch (error) {
                     console.log(error);
@@ -122,6 +123,7 @@ const LocationGrossSalaryForm = () => {
         if (locationId) {
             try {
                 const res = await userRequest.get(`/location/assigned-guard/${locationId}`);
+                console.debug('GET /location/assigned-guard (onChange) response:', res.data);
                 setGuards(res.data.data || []);
             } catch (error) {
                 console.log(error);
@@ -235,9 +237,10 @@ const LocationGrossSalaryForm = () => {
                                                 <Field
                                                     as="select"
                                                     name="locationId"
-                                                    disabled={true}
                                                     className="w-full px-4 py-3 bg-formBgLightBlue border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-100 focus:border-transparent appearance-none"
                                                     onChange={(e) => {
+                                                        // Update Formik value and fetch guards for selected location
+                                                        setFieldValue && setFieldValue('locationId', e.target.value);
                                                         handleLocationChange(e.target.value);
                                                     }}
                                                 >
@@ -299,10 +302,21 @@ const LocationGrossSalaryForm = () => {
                                                         as="select"
                                                         name="serviceNo"
                                                         className="w-full px-4 py-3 bg-formBgLightBlue border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            // set Formik field and sync guardName to the corresponding guard id
+                                                            setFieldValue && setFieldValue('serviceNo', val);
+                                                            const selected = guards.find(g => String(g.guard?.serviceNumber || g.serviceNumber) === val);
+                                                            if (selected) {
+                                                                setFieldValue && setFieldValue('guardName', selected.guard?.id || selected.id);
+                                                            } else {
+                                                                setFieldValue && setFieldValue('guardName', '');
+                                                            }
+                                                        }}
                                                     >
                                                         <option value="">Select</option>
                                                         {guards.map((guard) => (
-                                                            <option key={guard.guard?.id || guard.id} value={guard.guard?.serviceNumber || guard.serviceNumber}>
+                                                            <option key={(guard.guard?.id || guard.id) + '_' + String(guard.guard?.serviceNumber || guard.serviceNumber)} value={String(guard.guard?.serviceNumber || guard.serviceNumber || '')}>
                                                                 {guard.guard?.serviceNumber || guard.serviceNumber || 'NA'}
                                                             </option>
                                                         ))}
@@ -322,6 +336,16 @@ const LocationGrossSalaryForm = () => {
                                                         as="select"
                                                         name="guardName"
                                                         className="w-full px-4 py-3 bg-formBgLightBlue border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none"
+                                                        onChange={(e) => {
+                                                            const val = e.target.value;
+                                                            setFieldValue && setFieldValue('guardName', val);
+                                                            const selected = guards.find(g => (g.guard?.id || g.id) === val);
+                                                            if (selected) {
+                                                                setFieldValue && setFieldValue('serviceNo', String(selected.guard?.serviceNumber || selected.serviceNumber || ''));
+                                                            } else {
+                                                                setFieldValue && setFieldValue('serviceNo', '');
+                                                            }
+                                                        }}
                                                     >
                                                         <option value="">Select</option>
                                                         {guards.map((guard) => (

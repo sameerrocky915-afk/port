@@ -362,33 +362,33 @@ model Biometric {
 }
 
 model Client {
-  id                     String               @id @default(uuid()) @db.Uuid
-  organizationId         String               @db.Uuid
-  contractNumber         Int                  @default(autoincrement())
-  contractFile           String?              @default("N/A")
-  recruitmentDate        DateTime
-  companyName            String
-  industry               String
-  websiteLink            String
-  address                String
-  city                   String
-  state                  String
-  country                String
-  currentAddress         String
-  contactNumber          String
-  officialEmail          String               @unique
-  POCName                String?
-  POCDesignation         String?
-  POCEmail               String?
-  POCContact             String?
+  id                   String               @id @default(uuid()) @db.Uuid
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  isActive             Boolean              @default(true)
+  contractNumber       BigInt               @unique
+  contractFile         String?
+  recruitmentDate      DateTime
+  companyName          String
+  industry            String
+  websiteLink         String
+  address             String
+  city                String
+  state               String
+  country             String
+  currentAddress      String
+  contactNumber       String
+  officialEmail       String               @unique
+  POCName             String?
+  POCDesignation      String?
+  POCEmail            String?
+  POCContact          String?
   AlternateContactPerson String?
   AlternateContactNumber String?
-  createdAt              DateTime             @default(now())
-  updatedAt              DateTime             @updatedAt
-  isActive               Boolean              @default(true)
-  assignedSupervisor     AssignedSupervisor[]
-  organization           Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  location               Location[]
+  organizationId       String               @db.Uuid
+  organization         Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  location             Location[]
+  assignedSupervisors  AssignedSupervisor[]
 }
 
 model Shift {

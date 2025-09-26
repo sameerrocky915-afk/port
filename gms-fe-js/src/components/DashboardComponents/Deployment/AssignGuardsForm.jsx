@@ -12,20 +12,19 @@ import { useCurrentUser } from '@/lib/hooks';
 
 // Initial form values
 const initialValues = {
-    requestedGuardId: '',
     guardId: '',
+    clientId: '',
     locationId: '',
     guardCategoryId: '',
-    deploymentTill: '',
-
+    requestedGuardId: '',
 };
+
 // Validation schema
 const validationSchema = Yup.object({
-    //we will send guard id but show service number in the form
-
-    guardId: Yup.string().required('Guard name is required'),
-    locationId: Yup.string().required('Location ID is required'),
-    guardCategoryId: Yup.string().required('Assign category is required'), //sending guard category id but show guard category in the form
+    guardId: Yup.string().required('Guard selection is required'),
+    clientId: Yup.string().required('Client selection is required'),
+    locationId: Yup.string().required('Location selection is required'),
+    guardCategoryId: Yup.string().required('Guard category selection is required'),
 });
 
 const AssignGuardsForm = () => {
@@ -42,55 +41,104 @@ const AssignGuardsForm = () => {
     const [assignedGuardForLocation, setAssignedGuardForLocation] = useState([]);
 
 
+    // Fetch guards data on component mount
     useEffect(() => {
         const getGuardsByOrganization = async () => {
             try {
                 const res = await userRequest.get("/guards/by-organization");
                 setGuards(res.data.data);
-
             } catch (error) {
-                console.log(error)
+                console.error("Error fetching guards:", error);
+                toast.error("Failed to fetch guards data");
             }
-        }
+        };
+        getGuardsByOrganization();
+    }, []);
 
+    // Fetch clients data on component mount
+    useEffect(() => {
         const getClients = async () => {
             try {
+                console.log('Fetching clients...');
+                const token = localStorage.getItem('token'); // Check if token exists
+                console.log('Token exists:', !!token);
+                
                 const res = await userRequest.get("/clients/by-organization");
-                setClients(res.data.data);
-
+                console.log('Client response:', res);
+                
+                if (res.data && res.data.data) {
+                    console.log('Client data:', res.data.data);
+                    if (Array.isArray(res.data.data)) {
+                        setClients(res.data.data);
+                    } else {
+                        console.error('Client data is not an array:', res.data.data);
+                        toast.error('Invalid client data format received');
+                    }
+                } else {
+                    console.error('Invalid response format:', res.data);
+                    toast.error('Invalid response format from server');
+                }
             } catch (error) {
-                console.log(error)
+                console.error("Error fetching clients:", error);
+                if (error.response) {
+                    console.error("Error status:", error.response.status);
+                    console.error("Error data:", error.response.data);
+                    
+                    // Handle specific error cases
+                    if (error.response.status === 401) {
+                        toast.error("Session expired. Please login again.");
+                        // Consider redirecting to login here
+                    } else {
+                        toast.error(error.response.data.message || "Failed to fetch clients data");
+                    }
+                } else if (error.request) {
+                    console.error("No response received:", error.request);
+                    toast.error("No response from server");
+                } else {
+                    console.error("Error setting up request:", error.message);
+                    toast.error("Error setting up request");
+                }
             }
-        }
+        };
+        getClients();
+    }, []);
 
+    // Fetch assigned guard data when selectedGuardId changes
+    useEffect(() => {
         const getAssignedGuardForLocation = async () => {
+            if (!selectedGuardId) return;
+            
             try {
                 const res = await userRequest.get(`/guards/assigned-guard/${selectedGuardId}`);
                 setAssignedGuardForLocation(res.data.data);
-
             } catch (error) {
-                console.log(error)
+                console.error("Error fetching assigned guard:", error);
+                toast.error("Failed to fetch assigned guard data");
             }
-        }
-
-
-        selectedGuardId && getAssignedGuardForLocation();
-        getGuardsByOrganization();
-        getClients();
+        };
+        
+        getAssignedGuardForLocation();
     }, [selectedGuardId]);
 
+    // Fetch requested guards when location changes
     useEffect(() => {
-
         const requestedGuardsByLocationId = async () => {
+            if (!selectedLocationId) {
+                setRequestedGuards([]);
+                return;
+            }
+
             try {
                 const res = await userRequest.get(`/location/requested-guards/${selectedLocationId}`);
                 setRequestedGuards(res.data.data);
-
             } catch (error) {
-                console.log(error)
+                console.error("Error fetching requested guards:", error);
+                toast.error("Failed to fetch requested guards");
+                setRequestedGuards([]);
             }
-        }
-        selectedLocationId && requestedGuardsByLocationId();
+        };
+        
+        requestedGuardsByLocationId();
     }, [selectedLocationId]);
 
 
@@ -133,10 +181,15 @@ const AssignGuardsForm = () => {
         resetForm();
     };
 
-    const handleClientChange = (e) => {
+    const handleClientChange = (e, setFieldValue) => {
         const clientId = e.target.value;
         const client = clients.find((client) => client.id === clientId);
         setSelectedClient(client);
+        setFieldValue('clientId', clientId);
+        // Reset location when client changes
+        setSelectedLocationId(null);
+        setFieldValue('locationId', '');
+        setRequestedGuards([]);
 
     }
 
@@ -219,28 +272,23 @@ const AssignGuardsForm = () => {
                                                     const guardId = e.target.value;
                                                     setFieldValue('guardId', guardId);
                                                     setSelectedGuardId(guardId);
-
-                                                    if (guardId) {
-                                                        // Find the selected guard and set the guardId field
-                                                        const selectedGuard = guards.find(guard => guard.id === guardId);
-                                                        if (selectedGuard) {
-                                                            setFieldValue('guardId', selectedGuard.id);
-                                                        }
-                                                    } else {
-                                                        setFieldValue('guardId', '');
-                                                    }
                                                 }}
-                                                className={`w-full px-4 py-3 bg-formBgLightBlue border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none ${errors.guardId && touched.guardId
-                                                    ? 'border-red-500'
-                                                    : 'border-gray-200'
-                                                    }`}
+                                                className={`w-full px-4 py-3 bg-formBgLightBlue border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none ${
+                                                    errors.guardId && touched.guardId
+                                                        ? 'border-red-500'
+                                                        : 'border-gray-200'
+                                                }`}
                                             >
-                                                <option value="">Select</option>
-                                                {guards?.map((guard) => (
-                                                    <option key={guard.id} value={guard.id}>
-                                                        {guard.serviceNumber}
-                                                    </option>
-                                                ))}
+                                                <option value="">Select Service Number</option>
+                                                {Array.isArray(guards) && guards.length > 0 ? (
+                                                    guards.map((guard) => (
+                                                        <option key={guard.id} value={guard.id}>
+                                                            {guard.serviceNumber}
+                                                        </option>
+                                                    ))
+                                                ) : (
+                                                    <option disabled>No guards available</option>
+                                                )}
                                             </Field>
                                             <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                             {errors.guardId && touched.guardId && (
@@ -280,20 +328,47 @@ const AssignGuardsForm = () => {
                                                 as="select"
                                                 name="clientId"
                                                 onChange={(e) => {
-                                                    setFieldValue('clientId', e.target.value);
-                                                    handleClientChange(e);
+                                                    const clientId = e.target.value;
+                                                    console.log('Selected client ID:', clientId);
+                                                    
+                                                    // Find the selected client with its locations
+                                                    const client = clients.find((c) => c.id === clientId);
+                                                    console.log('Found client:', client);
+                                                    
+                                                    // Update form and state
+                                                    setFieldValue('clientId', clientId);
+                                                    setSelectedClient(client);
+                                                    
+                                                    // Reset location-related states
+                                                    setFieldValue('locationId', '');
+                                                    setFieldValue('guardCategoryId', '');
+                                                    setSelectedLocationId(null);
+                                                    setSelectedRequestedGuard(null);
+                                                    setRequestedGuards([]);
                                                 }}
-                                                className={`w-full px-4 py-3 bg-formBgLightBlue border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none ${errors.clientId && touched.clientId
-                                                    ? 'border-red-500'
-                                                    : 'border-gray-200'
-                                                    }`}
+                                                className={`w-full px-4 py-3 bg-formBgLightBlue border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none ${
+                                                    errors.clientId && touched.clientId
+                                                        ? 'border-red-500'
+                                                        : 'border-gray-200'
+                                                }`}
                                             >
-                                                <option value="" disabled>Select</option>
-                                                {clients?.map((client) => (
-                                                    <option key={client.id} value={client.id} className='text-sm'>
-                                                        {client.contractNumber} ({client.companyName})
-                                                    </option>
-                                                ))}
+                                                <option value="">Select Client</option>
+                                                {Array.isArray(clients) ? (
+                                                    clients.length > 0 ? (
+                                                        clients.map((client) => {
+                                                            console.log('Rendering client:', client);
+                                                            return (
+                                                                <option key={client.id} value={client.id} className='text-sm'>
+                                                                    {client.contractNumber ? String(client.contractNumber) : 'N/A'} ({client.companyName || 'Unknown'})
+                                                                </option>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        <option disabled>No clients available</option>
+                                                    )
+                                                ) : (
+                                                    <option disabled>Loading clients...</option>
+                                                )}
                                             </Field>
 
                                             <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
@@ -311,21 +386,48 @@ const AssignGuardsForm = () => {
                                             <Field
                                                 as="select"
                                                 name="locationId"
+                                                disabled={!selectedClient}
                                                 onChange={(e) => {
-                                                    setFieldValue('locationId', e.target.value);
-                                                    setSelectedLocationId(e.target.value);
+                                                    const locationId = e.target.value;
+                                                    console.log('Selected location ID:', locationId);
+                                                    
+                                                    // Update form and state
+                                                    setFieldValue('locationId', locationId);
+                                                    setSelectedLocationId(locationId);
+                                                    
+                                                    // Reset category-related states
+                                                    setFieldValue('guardCategoryId', '');
+                                                    setSelectedRequestedGuard(null);
+                                                    
+                                                    console.log('Updated location state:', {
+                                                        locationId,
+                                                        selectedClient,
+                                                        selectedLocation: selectedClient?.location?.find(l => l.id === locationId)
+                                                    });
                                                 }}
-                                                className={`w-full px-4 py-3 bg-formBgLightBlue border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none ${errors.locationId && touched.locationId
-                                                    ? 'border-red-500'
-                                                    : 'border-gray-200'
-                                                    }`}
+                                                className={`w-full px-4 py-3 bg-formBgLightBlue border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none ${
+                                                    errors.locationId && touched.locationId
+                                                        ? 'border-red-500'
+                                                        : 'border-gray-200'
+                                                } ${!selectedClient ? 'cursor-not-allowed opacity-50' : ''}`}
                                             >
-                                                <option value="">Select</option>
-                                                {selectedClient?.location?.map((location) => (
-                                                    <option key={location.id} value={location.id}>
-                                                        {location.locationName} -  ({location.createdLocationId})
-                                                    </option>
-                                                ))}
+                                                <option value="">Select Location</option>
+                                                {selectedClient ? (
+                                                    Array.isArray(selectedClient.location) && selectedClient.location.length > 0 ? (
+                                                        selectedClient.location.map((location) => {
+                                                            console.log('Rendering location:', location);
+                                                            return (
+                                                                <option key={location.id} value={location.id}>
+                                                                    {location.locationName} - ({location.createdLocationId || 'N/A'})
+                                                                </option>
+                                                            );
+                                                        })
+                                                    ) : (
+                                                        <option disabled>No locations available for this client</option>
+                                                    )
+                                                ) : (
+                                                    <option disabled>Select a client first</option>
+                                                )}
                                             </Field>
                                             <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                             {errors.locationId && touched.locationId && (
@@ -336,31 +438,45 @@ const AssignGuardsForm = () => {
 
                                     <div>
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
-                                            Assign category
+                                            Assign Category
                                         </label>
                                         <div className="relative">
                                             <Field
                                                 as="select"
                                                 name="guardCategoryId"
+                                                disabled={!selectedLocationId}
                                                 onChange={(e) => {
                                                     const guardCategoryId = e.target.value;
                                                     setFieldValue('guardCategoryId', guardCategoryId);
-
+                                                    
                                                     // Find the selected requested guard
-                                                    const selectedGuard = requestedGuards.find(guard => guard.guardCategory.id === guardCategoryId);
+                                                    const selectedGuard = requestedGuards.find(
+                                                        guard => guard.guardCategory.id === guardCategoryId
+                                                    );
                                                     setSelectedRequestedGuard(selectedGuard);
                                                 }}
-                                                className={`w-full px-4 py-3 bg-formBgLightBlue border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none ${errors.guardCategoryId && touched.guardCategoryId
-                                                    ? 'border-red-500'
-                                                    : 'border-gray-200'
-                                                    }`}
+                                                className={`w-full px-4 py-3 bg-formBgLightBlue border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none ${
+                                                    errors.guardCategoryId && touched.guardCategoryId
+                                                        ? 'border-red-500'
+                                                        : 'border-gray-200'
+                                                } ${!selectedLocationId ? 'cursor-not-allowed opacity-50' : ''}`}
                                             >
-                                                <option value="">Select</option>
-                                                {requestedGuards.map((requestedGuard) => (
-                                                    <option key={requestedGuard.guardCategory.id} value={requestedGuard.guardCategory.id}>
-                                                        {requestedGuard.guardCategory.categoryName}
+                                                <option value="">Select Category</option>
+                                                {selectedLocationId && Array.isArray(requestedGuards) && requestedGuards.length > 0 ? (
+                                                    requestedGuards.map((requestedGuard) => (
+                                                        <option
+                                                            key={requestedGuard.guardCategory.id}
+                                                            value={requestedGuard.guardCategory.id}
+                                                        >
+                                                            {requestedGuard.guardCategory.categoryName} 
+                                                            ({requestedGuard.guardCount} guards requested)
+                                                        </option>
+                                                    ))
+                                                ) : (
+                                                    <option disabled>
+                                                        {selectedLocationId ? 'No guard categories requested' : 'Select a location first'}
                                                     </option>
-                                                ))}
+                                                )}
                                             </Field>
                                             <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                                             {errors.guardCategoryId && touched.guardCategoryId && (

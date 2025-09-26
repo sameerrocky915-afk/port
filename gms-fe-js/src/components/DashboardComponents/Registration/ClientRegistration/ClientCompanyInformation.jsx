@@ -7,6 +7,7 @@ import { countries } from '@/constants/countries';
 import { PAKISTAN_CITIES } from '@/constants/PakistanCities';
 import { userRequest } from '@/lib/RequestMethods';
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 const ClientCompanyInformation = ({ onNext, onSave, initialData = {}, currentStepIndex = 0, totalSteps = 2 }) => {
     const [contractKey, setContractKey] = useState(initialData.contractFile || '');
@@ -15,22 +16,38 @@ const ClientCompanyInformation = ({ onNext, onSave, initialData = {}, currentSte
     const [uploadSuccess, setUploadSuccess] = useState(false);
 
     const validationSchema = Yup.object({
-        contractNumber: Yup.string().required('Contract Number is required'),
-        companyName: Yup.string().required('Company Name is required'),
-        websiteLink: Yup.string().url('Invalid URL'),
-        city: Yup.string().required('City is required'),
-        country: Yup.string().required('Country is required'),
-        contactNumber: Yup.string().min(11).max(11).required('Contact Number is required'),
-        recruitmentDate: Yup.string().required('Contract Date is required'), //Renamed the recruitment date to contract date but sending the recruitment date to the backend
-        industry: Yup.string().required('Industry is required'),
-        address: Yup.string().required('Address is required'),
-        state: Yup.string().required('State/Province is required'),
-        officialEmail: Yup.string().email('Invalid email').required('Official Email is required'),
-        currentAddress: Yup.string().required('Current Address is required'),
+        contractNumber: Yup.string()
+            .matches(/^\d{1,15}$/, 'Contract number must be between 1 and 15 digits')
+            .test('positive', 'Contract number must be positive', (val) => !val || parseInt(val) > 0),
+        companyName: Yup.string()
+            .required('Company Name is required')
+            .min(2, 'Company name must be at least 2 characters'),
+        websiteLink: Yup.string()
+            .url('Invalid URL format')
+            .nullable(),
+        city: Yup.string()
+            .required('City is required'),
+        country: Yup.string()
+            .required('Country is required'),
+        contactNumber: Yup.string()
+            .required('Contact Number is required')
+            .matches(/^[0-9]{11}$/, 'Contact number must be exactly 11 digits'),
+        recruitmentDate: Yup.string()
+            .required('Contract Date is required'),
+        industry: Yup.string()
+            .required('Industry is required'),
+        address: Yup.string()
+            .required('Address is required'),
+        state: Yup.string()
+            .required('State/Province is required'),
+        officialEmail: Yup.string()
+            .email('Invalid email format')
+            .required('Official Email is required'),
+        currentAddress: Yup.string()
+            .required('Current Address is required'),
         contractFile: Yup.string()
-    });
-
-    const initialValues = {
+            .nullable()
+    });    const initialValues = {
         contractNumber: initialData.contractNumber || '',
         companyName: initialData.companyName || '',
         websiteLink: initialData.websiteLink || '',
@@ -146,31 +163,73 @@ const ClientCompanyInformation = ({ onNext, onSave, initialData = {}, currentSte
         }
     };
 
-    const handleSubmit = (values) => {
-        // Convert date to ISO
-        let isoRecruitmentDate = '';
-        if (values.recruitmentDate) {
-            const date = new Date(values.recruitmentDate);
-            if (!isNaN(date.getTime())) isoRecruitmentDate = date.toISOString();
+    const handleSubmit = async (values, { setSubmitting, setErrors }) => {
+        try {
+            // Convert date to ISO
+            let isoRecruitmentDate = '';
+            if (values.recruitmentDate) {
+                const date = new Date(values.recruitmentDate);
+                if (!isNaN(date.getTime())) {
+                    isoRecruitmentDate = date.toISOString();
+                } else {
+                    throw new Error('Invalid recruitment date');
+                }
+            }
+
+            // Validate contact number format
+            if (!/^\d{11}$/.test(values.contactNumber)) {
+                setErrors({ contactNumber: 'Contact number must be exactly 11 digits' });
+                return;
+            }
+
+            // Validate contract number
+            if (values.contractNumber) {
+                const contractNum = parseInt(values.contractNumber);
+                if (isNaN(contractNum) || contractNum <= 0) {
+                    setErrors({ contractNumber: 'Contract number must be a positive number' });
+                    return;
+                }
+            }
+
+            const payload = {
+                contractNumber: values.contractNumber,
+                contractFile: values.contractFile,
+                recruitmentDate: isoRecruitmentDate,
+                companyName: values.companyName,
+                industry: values.industry,
+                websiteLink: values.websiteLink,
+                address: values.address,
+                city: values.city,
+                state: values.state,
+                country: values.country,
+                currentAddress: values.currentAddress,
+                contactNumber: values.contactNumber,
+                officialEmail: values.officialEmail
+            };
+
+            if (onNext) {
+                await onNext(payload);
+            }
+        } catch (error) {
+            console.error('Form submission error:', error);
+            
+            // Handle specific error cases
+            if (error.response?.data?.message) {
+                // Handle server validation errors
+                if (error.response.data.message.includes('officialEmail')) {
+                    setErrors({ officialEmail: 'This email is already registered' });
+                } else if (error.response.data.message.includes('contractNumber')) {
+                    setErrors({ contractNumber: 'Invalid contract number' });
+                } else {
+                    toast.error(`Error: ${error.response.data.message}`);
+                }
+            } else {
+                // Handle other types of errors
+                toast.error('An error occurred while submitting the form. Please try again.');
+            }
+        } finally {
+            setSubmitting(false);
         }
-
-        const payload = {
-            contractNumber: values.contractNumber,
-            contractFile: values.contractFile,
-            recruitmentDate: isoRecruitmentDate,
-            companyName: values.companyName,
-            industry: values.industry,
-            websiteLink: values.websiteLink,
-            address: values.address,
-            city: values.city,
-            state: values.state,
-            country: values.country,
-            currentAddress: values.currentAddress,
-            contactNumber: values.contactNumber,
-            officialEmail: values.officialEmail
-        };
-
-        if (onNext) onNext(payload);
     };
 
     const progressPercentage = ((currentStepIndex + 1) / totalSteps) * 100;
@@ -207,8 +266,16 @@ const ClientCompanyInformation = ({ onNext, onSave, initialData = {}, currentSte
                                 <Field
                                     type="text"
                                     name="contractNumber"
-                                    placeholder="Enter Contract Number"
+                                    placeholder="Enter Contract Number (Optional)"
+                                    pattern="[0-9]*"
+                                    inputMode="numeric"
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#5570f1]"
+                                    onChange={(e) => {
+                                        // Only allow digits
+                                        const value = e.target.value.replace(/[^0-9]/g, '');
+                                        e.target.value = value;
+                                        e.target.dispatchEvent(new Event('input', { bubbles: true }));
+                                    }}
                                 />
                                 <ErrorMessage name="contractNumber" component="div" className="text-red-500 text-sm mt-1" />
                             </div>
@@ -367,6 +434,8 @@ const ClientCompanyInformation = ({ onNext, onSave, initialData = {}, currentSte
                                     type="tel"
                                     name="contactNumber"
                                     maxLength={11}
+                                    minLength={11}
+                                    pattern="[0-9]{11}"
                                     placeholder="eg: 03321234567"
                                     className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#5570f1]"
                                 />

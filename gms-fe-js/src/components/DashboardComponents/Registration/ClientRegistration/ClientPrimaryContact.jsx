@@ -5,12 +5,22 @@ import * as Yup from 'yup';
 
 const ClientPrimaryContact = ({ onNext, onPrevious, initialData = {}, currentStepIndex = 1, totalSteps = 2 }) => {
     const validationSchema = Yup.object({
-        POCName: Yup.string().required('POC Name is required'),
-        POCEmail: Yup.string().email('Invalid email').required('POC Email is required'),
-        POCDesignation: Yup.string().required('POC Designation is required'),
-        POCContact: Yup.string().required('POC Contact is required'),
-        AlternateContactPerson: Yup.string(),
-        AlternateContactNumber: Yup.string().min(11).max(11).required("Alternate contact number is required")
+        POCName: Yup.string()
+            .required('POC Name is required')
+            .min(2, 'POC Name must be at least 2 characters'),
+        POCEmail: Yup.string()
+            .email('Invalid email')
+            .required('POC Email is required'),
+        POCDesignation: Yup.string()
+            .required('POC Designation is required'),
+        POCContact: Yup.string()
+            .required('POC Contact is required')
+            .matches(/^[0-9]{11}$/, 'POC contact number must be exactly 11 digits'),
+        AlternateContactPerson: Yup.string()
+            .min(2, 'Alternate contact person name must be at least 2 characters'),
+        AlternateContactNumber: Yup.string()
+            .matches(/^[0-9]{11}$/, 'Alternate contact number must be exactly 11 digits')
+            .required("Alternate contact number is required")
     });
 
     const initialValues = {

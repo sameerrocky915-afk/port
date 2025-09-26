@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { Formik, Form, Field, ErrorMessage } from 'formik';
 import * as Yup from 'yup';
 import { userRequest } from '@/lib/RequestMethods';
+import toast from 'react-hot-toast';
 
 const LocationInformation = ({ onNext, onPrevious, onSave, initialData = {} }) => {
   const [myClients, setMyClients] = useState(null);
   const [myOffices, setMyOffices] = useState(null);
-  const [locationTypes, setMyLocationTypes] = useState(null);
+  const [locationTypes, setMyLocationTypes] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const validationSchema = Yup.object({
     clientId: Yup.string().required('Client is required'),
@@ -50,25 +52,74 @@ const LocationInformation = ({ onNext, onPrevious, onSave, initialData = {} }) =
   };
 
   useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        // Fetch location types first
+        console.log('🔍 Starting location types fetch...');
+        const locationTypesRes = await userRequest.get("/location-type");
+        console.log('📥 Raw API Response:', locationTypesRes);
+        console.log('📦 Response Data Structure:', JSON.stringify(locationTypesRes.data, null, 2));
+        
+        if (locationTypesRes.data?.data?.length > 0) {
+          console.log('✅ Found existing location types:', locationTypesRes.data.data.length);
+          console.log('📋 Types:', locationTypesRes.data.data.map(t => ({ id: t.id, type: t.type })));
+          setMyLocationTypes(locationTypesRes.data.data);
+        } else {
+          console.log('⚠️ No location types found, creating defaults...');
+          setMyLocationTypes([]);
+          try {
+            const defaultTypes = [
+              { type: 'Office' },
+              { type: 'Warehouse' },
+              { type: 'Factory' },
+              { type: 'Retail' },
+              { type: 'Residential' }
+            ];
+            
+            console.log('🔧 Creating default types:', defaultTypes);
+            const createdTypes = await Promise.all(
+              defaultTypes.map(type => userRequest.post('/location-type', type))
+            );
+            console.log('✨ Created types response:', createdTypes.map(res => res.data));
+            
+            // Fetch all types again after creation
+            console.log('🔄 Re-fetching all location types...');
+            const newTypesRes = await userRequest.get("/location-type");
+            if (newTypesRes.data?.data?.length > 0) {
+              console.log('✅ Successfully loaded new types:', newTypesRes.data.data.length);
+              setMyLocationTypes(newTypesRes.data.data);
+            } else {
+              console.error('❌ Still no location types after creation!');
+              toast.error('Failed to load location types');
+            }
+          } catch (error) {
+            console.error('❌ Error managing location types:', error);
+            toast.error('Failed to set up location types');
+          }
+        }
 
-    const getMyClients = async () => {
-      const res = await userRequest.get("/clients/by-organization")
-      setMyClients(res.data.data);
-    }
-    const getOffices = async () => {
-      const res = await userRequest.get("/organizations/get-offices");
+        // Fetch clients
+        const clientsRes = await userRequest.get("/clients/by-organization");
+        setMyClients(clientsRes.data.data || []);
 
-      setMyOffices(res.data.data)
-    }
+        // Fetch offices
+        const officesRes = await userRequest.get("/organizations/get-offices");
+        setMyOffices(officesRes.data.data || []);
 
-    const getLocationTypes = async () => {
-      const res = await userRequest.get("/location-type");
-      setMyLocationTypes(res.data.data);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        toast.error(error.response?.data?.message || 'Failed to fetch form data');
+        // Set empty arrays as fallback
+        setMyLocationTypes([]);
+        setMyClients([]);
+        setMyOffices([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-    }
-    getMyClients();
-    getOffices();
-    getLocationTypes();
+    fetchData();
   }, [])
 
   return (
@@ -190,16 +241,57 @@ const LocationInformation = ({ onNext, onPrevious, onSave, initialData = {} }) =
                 )}
               </Field>
               <Field name="locationTypeId">
-                {({ field }) => (
+                {({ field, form }) => (
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Location Type</label>
-                    <select {...field} className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="">Select</option>
-                      {locationTypes?.map(location => (
-                        <option key={location.id} value={location.id}>{location.type.charAt(0).toUpperCase() + location.type.slice(1)}</option>
-                      ))}
-                    </select>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Location Type
+                      {isLoading && <span className="ml-2 text-gray-400">(Loading...)</span>}
+                    </label>
+                    <div className="relative">
+                      <select 
+                        {...field} 
+                        className={`w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none ${
+                          isLoading ? 'cursor-wait opacity-50' : ''
+                        }`}
+                        disabled={isLoading}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(e);
+                          console.log('🎯 Location type selected:', {
+                            value,
+                            matchingType: locationTypes.find(t => t.id === value),
+                            availableTypes: locationTypes.map(t => ({ id: t.id, type: t.type }))
+                          });
+                        }}
+                      >
+                        <option value="">Select Location Type</option>
+                        {isLoading ? (
+                          <option disabled>Loading location types...</option>
+                        ) : locationTypes && locationTypes.length > 0 ? (
+                          locationTypes.map(type => {
+                            console.log('🏷️ Rendering type option:', { id: type.id, type: type.type });
+                            return (
+                              <option key={type.id} value={type.id}>
+                                {type.type.charAt(0).toUpperCase() + type.type.slice(1)}
+                              </option>
+                            );
+                          })
+                        ) : (
+                          <option disabled>Setting up location types...</option>
+                        )}
+                      </select>
+                      <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700">
+                        <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
+                          <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/>
+                        </svg>
+                      </div>
+                    </div>
                     <ErrorMessage name="locationTypeId" component="div" className="text-red-500 text-sm mt-1" />
+                    {field.value && locationTypes.length > 0 && (
+                      <div className="text-sm text-green-600 mt-1">
+                        Selected: {locationTypes.find(t => t.id === field.value)?.type || 'Loading...'}
+                      </div>
+                    )}
                   </div>
                 )}
               </Field>
